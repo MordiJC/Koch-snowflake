@@ -98,21 +98,6 @@ setup_:
 	finit
 	jmp main
 
-print_int macro I
-	push offset int_str_buf
-	push I
-	call int_to_string
-	add sp, 2*2
-
-	push offset int_str_buf
-	call print
-	add sp, 2
-
-	push ' '
-	call putchar
-	add sp, 2
-endm
-
 draw_line_with_int_data macro
 	pusha
 
@@ -164,12 +149,6 @@ main:
 	; call calculate_next_point_position
 
 	; draw_line_with_int_data
-
-	; push 50 ; r
-	; push 00 ; y
-	; push 00 ; x
-	; call fill_circle
-	; add sp, 2*3
 
 	call PAUSE
 
@@ -314,7 +293,7 @@ draw_line:
 	mov bp, sp
 	sub sp, 24 ; Allocate 12 local variables
 	pusha
-	
+
 	; x0
 	mov ax, word ptr [bp+4]
 	mov word ptr [bp-18], ax
@@ -335,7 +314,7 @@ draw_line:
 		call abs
 		add sp, 2
 		mov word ptr [bp-4], ax
-
+	
 	; dy = abs(y1 - y0)
 		mov ax, word ptr [bp-24]
 		sub ax, word ptr [bp-20]
@@ -347,7 +326,7 @@ draw_line:
 	; sx = (x0 < x1 ? 1 : -1)
 		mov ax, word ptr [bp-18]
 		cmp ax, word ptr [bp-22]
-		jge draw_line_sx_GE
+		jnl draw_line_sx_GE
 		mov ax, 1
 		jmp draw_line_sx_E
 	draw_line_sx_GE:
@@ -370,19 +349,17 @@ draw_line:
 		mov ax, word ptr [bp-4]
 		cmp ax, word ptr [bp-6]
 		jg draw_line_err_G
-		mov ax, word ptr [bp-6]
-		neg ax
-		mov dx, ax
-		shr dx, 31
-		add ax, dx
-		sar ax, 1
+		xor ax, ax
+		sub ax, word ptr [bp-6]
+		cwd
+		mov cx, 2
+		idiv cx
 		jmp draw_line_err_E
 	draw_line_err_G:
 		mov ax, word ptr [bp-4]
-		mov dx, ax
-		shr dx, 31
-		add ax, dx
-		sar ax, 1
+		cwd
+		mov cx, 2
+		idiv cx
 	draw_line_err_E:
 		mov word ptr [bp-2], ax
 
@@ -408,8 +385,8 @@ draw_line:
 			mov word ptr [bp-12], ax
 
 		; if (e2 >-dx) { err -= dy; x0 += sx; }
-			mov ax, word ptr [bp-4]
-			neg ax
+			xor ax, ax
+			sub ax, word ptr [bp-4]
 			cmp word ptr [bp-12], ax
 			jle draw_line_rasterization_loop_if1_end
 
@@ -417,6 +394,7 @@ draw_line:
 			sub word ptr [bp-2], ax
 			mov ax, word ptr [bp-8]
 			add word ptr [bp-18], ax
+
 		draw_line_rasterization_loop_if1_end:
 
 		; if (e2 < dy) { err += dx; y0 += sy; }
@@ -590,292 +568,6 @@ decrease_angle:
 	pop bp
 	ret
 
-;void draw_circle(int x0, int y0, int radius)
-draw_circle:
-	push bp
-	mov bp, sp
-	sub sp, 20 ; alokowanie 10 zmiennych typu word int
-	pusha
-
-	; x0
-	mov ax, word ptr [bp+4]
-	mov word ptr [bp-18], ax
-	; y0
-	mov ax, word ptr [bp+6]
-	mov word ptr [bp-20], ax
-	; radius
-	mov ax, word ptr [bp+8]
-	mov word ptr [bp-22], ax
-
-	; x = radius
-	mov ax, word ptr [bp-22]
-	mov word ptr [bp-14], ax
-
-	; y = 0
-	mov word ptr [bp-12], 0
-
-	; err = 0
-	mov word ptr [bp-10], 0
-
-	; while(x >= y)
-	draw_circle_loop:
-		mov ax, word ptr [bp-14]
-		cmp ax, word ptr [bp-12]
-		jnge draw_circle_loop_end ; x < y
-	
-		; rysuj łuk
-		push word ptr [bp-12] ; y
-		push word ptr [bp-20] ; y0
-		push word ptr [bp-14] ; x
-		push word ptr [bp-18] ; x0
-		call draw_curve
-		add sp, 2*4
-
-		;call PAUSE
-
-		; y += 1
-		add word ptr [bp-12], 1
-
-		; if(err <= 0)
-			cmp word ptr [bp-10], 0
-			jg draw_circle_loop_if1_end ; err > 0
-
-			; err += 2*y + 1
-			mov ax, word ptr [bp-12]
-			add ax, ax               ; 2*y
-			add ax, 1                ; + 1
-			add word ptr [bp-10], ax ; err = result
-
-			draw_circle_loop_if1_end:
-
-		; if(err > 0)
-			cmp word ptr [bp-10], 0
-			jle draw_circle_loop_if2_end
-
-			; err -= 2*x + 1
-			sub word ptr [bp-14], 1
-			mov ax, word ptr [bp-14]
-			add ax, ax
-			add ax, 1
-			sub word ptr[bp-10], ax
-
-			draw_circle_loop_if2_end:
-
-		jmp draw_circle_loop
-
-	draw_circle_loop_end:
-	popa
-	leave
-	ret
-
-; void draw_curve(int x0, int x, int y0, int y)
-draw_curve:
-	push bp
-	mov bp, sp
-	push ax
-	push bx
-
-	; setPixel(x0 + x, y0 + y);
-	mov ax, word ptr [bp+4]  ; x0
-	add ax, word ptr [bp+6]  ; x
-	mov bx, word ptr [bp+8]  ; y0
-	add bx, word ptr [bp+10] ; y
-	push bx ; Y
-	push ax ; X
-	call setPixel
-	add sp, 2*2
-
-	; setPixel(x0 + y, y0 + x);
-	mov ax, word ptr [bp+4]  ; x0
-	add ax, word ptr [bp+10] ; y
-	mov bx, word ptr [bp+8]  ; y0
-	add bx, word ptr [bp+6]  ; x
-	push bx ; Y
-	push ax ; X
-	call setPixel
-	add sp, 2*2
-
-	; setPixel(x0 - y, y0 + x);
-	mov ax, word ptr [bp+4]  ; x0
-	sub ax, word ptr [bp+10] ; y
-	mov bx, word ptr [bp+8]  ; y0
-	add bx, word ptr [bp+6]  ; x
-	push bx ; Y
-	push ax ; X
-	call setPixel
-	add sp, 2*2
-
-	; setPixel(x0 - x, y0 + y);
-	mov ax, word ptr [bp+4]  ; x0
-	sub ax, word ptr [bp+6]  ; x
-	mov bx, word ptr [bp+8]  ; y0
-	add bx, word ptr [bp+10] ; y
-	push bx ; Y
-	push ax ; X
-	call setPixel
-	add sp, 2*2
-
-	; setPixel(x0 - x, y0 - y);
-	mov ax, word ptr [bp+4]  ; x0
-	sub ax, word ptr [bp+6]  ; x
-	mov bx, word ptr [bp+8]  ; y0
-	sub bx, word ptr [bp+10] ; y
-	push bx ; Y
-	push ax ; X
-	call setPixel
-	add sp, 2*2
-
-	; setPixel(x0 - y, y0 - x);
-	mov ax, word ptr [bp+4]  ; x0
-	sub ax, word ptr [bp+10] ; y
-	mov bx, word ptr [bp+8]  ; y0
-	sub bx, word ptr [bp+6]  ; x
-	push bx ; Y
-	push ax ; X
-	call setPixel
-	add sp, 2*2
-
-	; setPixel(x0 + y, y0 - x);
-	mov ax, word ptr [bp+4]  ; x0
-	add ax, word ptr [bp+10] ; y
-	mov bx, word ptr [bp+8]  ; y0
-	sub bx, word ptr [bp+6]  ; x
-	push bx ; Y
-	push ax ; X
-	call setPixel
-	add sp, 2*2
-
-	; setPixel(x0 + x, y0 - y);
-	mov ax, word ptr [bp+4]  ; x0
-	add ax, word ptr [bp+6]  ; x
-	mov bx, word ptr [bp+8]  ; y0
-	sub bx, word ptr [bp+10] ; y
-	push bx ; Y
-	push ax ; X
-	call setPixel
-	add sp, 2*2
-
-	pop bx
-	pop ax
-	leave
-	ret
-
-; void fill_circle(int x, int y, int radius)
-fill_circle:
-	push bp
-	mov bp, sp
-	sub sp, 2*9 ; 16
-
-	pusha
-
-	; x
-	mov ax, word ptr [bp+4]
-	mov word ptr [bp-10], ax
-
-	; y
-	mov ax, word ptr [bp+6]
-	mov word ptr [bp-12], ax
-
-	; radius
-	mov ax, word ptr [bp+8]
-	mov word ptr [bp-14], ax
-
-	; - radius
-	xor ax, ax
-	sub ax, word ptr [bp-14]
-	mov word ptr[bp-2], ax
-
-	; - radius
-	xor ax, ax
-	sub ax, word ptr [bp-14]
-	mov word ptr[bp-4], ax
-
-	; + radius
-	xor ax, ax
-	add ax, word ptr [bp-14]
-	mov word ptr[bp-6], ax
-
-	; + radius
-	xor ax, ax
-	add ax, word ptr [bp-14]
-	mov word ptr[bp-8], ax
-	
-	; int i = -radius
-	mov ax, word ptr [bp-2]
-	mov word ptr [bp-16], ax
-
-	; for(int i = -radius; i <= +radius; ++i)
-		fill_circle_for_1_start:
-		mov ax, word ptr [bp-16]
-		cmp ax, word ptr [bp-6]
-		jnle fill_circle_for_1_end
-
-		mov ax, word ptr [bp-4]
-		mov word ptr [bp-18], ax
-
-		;call PAUSE
-		; for(int j= -radius; j <= +radius; ++j)
-			fill_circle_for_2_start:
-			mov ax, word ptr [bp-18]
-			cmp ax, word ptr [bp-8]
-			jnle fill_circle_for_2_end
-			
-			;if(i*i + j*j <= radius)
-				mov ax, word ptr [bp-16] ; i*i
-				cwd
-				imul ax
-				mov bx, ax
-
-				mov ax, word ptr [bp-18] ; j*j
-				cwd
-				imul ax
-				
-				add bx, ax ; i*i + j*j
-
-				mov ax,  word ptr [bp-14]
-				cwd
-				imul ax
-
-				cmp bx, ax
-				jnle fill_circle_if_1_end
-
-				; y
-				mov ax, word ptr [bp-18]
-				add ax, word ptr [bp-12]
-				push ax
-				; x
-				mov ax, word ptr [bp-16]
-				add ax, word ptr [bp-10]
-				push ax
-				call setPixel
-				add sp, 2*2
-
-				fill_circle_if_1_end:
-
-			; ++j
-			mov ax, word ptr [bp-18]
-			inc ax
-			mov word ptr [bp-18], ax
-
-			jmp fill_circle_for_2_start
-
-			fill_circle_for_2_end:
-
-		; ++i
-		mov ax, word ptr [bp-16]
-		inc ax
-		mov word ptr [bp-16], ax
-
-		jmp fill_circle_for_1_start
-
-		fill_circle_for_1_end:
-
-	pusha
-	add sp, 2*8
-	mov sp, bp
-	pop bp
-	ret
-
 ;------------------------------------------------;
 ;                   KOCH CODE                    ;
 ;------------------------------------------------;
@@ -1019,150 +711,6 @@ print:
 	pop ax
 	pop bp
 
-	ret
-
-; void endl() <- print \n\r
-endl:
-	push offset eol
-	call print
-	add sp, 2
-	ret
-
-; void printn(char *, int<max: 127>)
-printn:
-	push bp
-	mov bp, sp
-	pusha
-
-	xor ax, ax
-
-	mov dx, [bp + 4]
-	mov cx, [bp + 6]
-	mov bx, 1 ; STDOUT
-	mov ah, 40h
-	int 21h
-
-	popa
-	pop bp
-	ret
-
-; void putchar(char)
-putchar:
-	push bp
-	mov bp, sp
-	push dx
-	push ax
-
-	xor dx, dx
-	mov dl, [bp + 4]
-	mov ah, 02h
-	int 21h
-
-	pop ax
-	pop dx
-	pop bp
-	ret
-
-; void memset(byte *, char, uint)
-memset:
-	push bp
-	mov bp, sp
-	pusha
-	push es
-
-	xor ax, ax
-	mov al, [bp + 6]
-
-	mov bx, ds
-	mov es, bx
-
-	xor cx, cx
-	mov cl, [bp + 8]
-
-	mov bx, [bp + 4]
-	mov di, bx
-
-	rep stosw
-
-	pop es
-	popa
-	pop bp
-	ret
-
-; void memcopy(char * src, int num, char * dest)
-; Accepting DS offsets only
-memcopy:
-	push bp
-	mov bp, sp
-	pusha
-	push es
-
-	xor cx, cx
-	mov cx, [bp + 6] ; Set counter value
-
-	mov si, [bp + 4] ; Source
-	mov di, [bp + 8] ; Destination
-
-	mov ax, ds
-	mov es, ax
-
-	rep movsb ; Repeat cx-times byte moving operation
-
-	pop es
-	popa
-	pop bp
-	ret
-
-; void int_to_string(int value, char * output)
-int_to_string:
-	push bp
-	mov bp, sp
-	pusha
-
-	mov di, [bp+6]
-
-	mov ax, [bp+4]
-	xor dx, dx
-	mov cx, 10000
-	div cx
-	or al, '0'
-	
-	mov [di], al
-	inc di
-
-	mov ax, dx
-	xor dx, dx
-	mov cx, 1000
-	div cx
-	or al, '0'
-
-	mov [di], al
-	inc di
-
-	mov ax, dx
-	mov cl, 100
-	div cl
-	or al, '0'
-
-	mov [di], al
-	inc di
-
-	mov al, ah
-	xor ah, ah
-	mov cl, 10
-	div cl
-	or ax, '00'
-
-	mov [di], al
-	inc di
-	mov [di], ah
-	inc di
-
-	mov cl, '$'
-	mov [di], cl
-
-	popa
-	pop bp
 	ret
 
 ; <ax: len> strlen(char *)
